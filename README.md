@@ -3,7 +3,7 @@
 **A live AI advisor for the SAP ERPsim Manufacturing (muesli) game.** It reads your game's OData feed and tells you
 what to make next, how much, and what to charge, in plain words, with the exact numbers to type into SAP.
 
-![ERPsim Co-pilot screenshot](docs/screenshot.png)
+![ERPsim Co-pilot screenshot](screenshot.png)
 
 > "What should we produce next, and how much?" · "We have too much stock: what about prices?" · "Capacity or pay down the loan?"
 
