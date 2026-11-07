@@ -1,0 +1,30 @@
+# Copy to config.yaml and make it yours. config.yaml is ignored by git.
+
+odata_url: ""            # or set ERPSIM_ODATA_URL in .env
+provider: gemini        # free tier; or claude (paid)
+model: ""              # blank = default for the provider; see README
+teams_active: 6
+memory_dir: memory/private
+history_dir: history
+
+rules:                   # the defaults are the game's usual numbers; change if your game differs
+  capacity: 24000        # raise when you buy capacity (+1,000 per €1M)
+  batch: 48000
+  cover_days: 12
+  fg_low: 80000
+  fg_target: 110000
+  fg_high: 140000
+  cost_per_box_1kg: 1.50
+  cost_per_box_500g: 1.05
+
+# Your product plan. plan: core | reserve | never. mix = share of batches (any numbers, they are normalised).
+# Leave a product out and the co-pilot uses the game defaults; it also detects what you actually make.
+products:
+  - name: 1kg Mixed Fruit Muesli
+    plan: core
+    mix: 1
+  - name: 1kg Nut Muesli
+    plan: core
+    mix: 1
+  # recipe (kg per box), only if you changed it in ZCS02, e.g.:
+  #   recipe: {Wheat: 0.2, Oats: 0.6, Nuts: 0.2, "Large Box (1kg)": 1, "Large Bag (1kg)": 1}

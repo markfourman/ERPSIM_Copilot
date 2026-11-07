@@ -1,0 +1,9 @@
+# your secrets and your edge stay on your laptop
+.env
+config.yaml
+memory/private/*
+!memory/private/.gitkeep
+history/*.xlsx
+history/_summaries.json
+__pycache__/
+.pytest_cache/
