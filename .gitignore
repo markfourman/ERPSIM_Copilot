@@ -7,3 +7,4 @@ history/*.xlsx
 history/_summaries.json
 __pycache__/
 .pytest_cache/
+.venv/

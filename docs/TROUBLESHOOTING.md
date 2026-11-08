@@ -46,8 +46,20 @@ Some feeds send numbers as text (sometimes empty). The co-pilot converts them au
 it, update to the latest version and send the error.
 
 ### Numbers look stale
-Click **Refresh now** in the sidebar, or lower **Refresh every (seconds)**. Each refresh reads the whole feed, so
-15–30 seconds is plenty.
+Look at the live bar above the day heading. "new data 4 s ago" means it's current: the game only creates new data
+once per game day (about 45 seconds in a tournament), so nothing can be fresher. The co-pilot checks for a new day
+every 5 seconds (one tiny request) and then downloads only that day's rows.
+- **Red dot, "Can't reach the game server":** Wi-Fi dropped or the server is busy. It keeps showing the last data and
+  retries by itself. If it stays red, check the OData URL and your login.
+- **Still looks wrong:** click **Reload everything** in the sidebar to download the whole game again.
+
+### No sound on urgent alerts
+Browsers only allow sound after you've interacted with the page: click anywhere on it once. Check that
+**Sound on urgent alerts** is on in the sidebar and your laptop isn't muted. Pop-ups appear either way.
+
+### No AI brief line
+The one-line AI brief needs the Gemini key (the toggle is greyed out without it). On the free tier, if the minute's
+limit is used up, that day shows the rules-based line instead ("rules" label) and the next day tries again.
 
 ## The Ask tab (AI)
 

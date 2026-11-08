@@ -345,7 +345,104 @@ def endgame_plan(st: GameState) -> dict:
                 "advice": "Start stepping prices down on the products listed as soon as they appear, not on the last day." if risk else "On track to sell out."})
 
 
+# ------------------------------------------------------------------ today's to-do list (live alerts)
+LEVELS = {"act": 0, "do": 1, "watch": 2}   # act = type it now (sound), do = today's routine, watch = keep an eye on it
+
+
+def _channel_prices(new: dict) -> str:
+    return " · ".join(f"DC{ch} €{p:.2f}" for ch, p in sorted(new.items(), key=lambda kv: kv[0] != "12"))
+
+
+def daily_alerts(st: GameState, plan: dict | None = None, prices: list | None = None, snap: dict | None = None) -> list[dict]:
+    """What needs doing today, most urgent first. Each item: key, level (act/do/watch), text, short (for the brief)."""
+    r = st.r
+    if not st.day:
+        return []
+    if st.day >= r.total_days:
+        return [{"key": "game_over", "level": "watch", "text": "Game over: nothing more to type.", "short": "game over"}]
+    snap = snap or snapshot(st)
+    plan = plan or production_plan(st)
+    prices = prices if prices is not None else price_advice(st)["products"]
+    out = []
+
+    def add(key, level, text, short):
+        out.append({"key": key, "level": level, "text": text, "short": short})
+
+    if plan.get("production_brake"):
+        add("brake", "act", plan["action"], "pause the line (no CO41)")
+    for p in prices:
+        if p.get("cut_every_day") and p.get("new_prices"):
+            new12 = p["new_prices"].get("12")
+            add(f"undercut:{p['code']}", "act",
+                f"UNDERCUT {p['code']} ({p['product']}): rivals average €{p['rivals_avg_price']:.2f}. "
+                f"VK32 → {_channel_prices(p['new_prices'])}. Cut again tomorrow until within €{r.undercut_target:.2f}.",
+                f"cut {p['code']} to €{new12:.2f}" if new12 else f"cut {p['code']}")
+    if snap["alerts"].get("factory_idle_yesterday"):
+        add("idle", "act", "The factory made nothing yesterday: convert a batch now (CO41).", "factory idle: convert now")
+    if st.day <= r.last_convert_day:
+        tab = st.products()
+        for x in tab[tab.active].itertuples():
+            if x.sold_per_day <= 0 or x.queued > 0 or st.s.product(x.product).get("plan") in ("never", "reserve"):
+                continue
+            left = x.stock / x.sold_per_day
+            if left < 2:
+                when = "is sold out" if x.stock <= 0 else f"runs out in about {left:.1f} days"
+                add(f"stockout:{x.code}", "act", f"{x.code} ({x.product}) {when} and nothing is queued: convert it next (CO41).",
+                    f"{x.code} {'sold out' if x.stock <= 0 else f'out in {left:.1f} d'}")
+    nxt = plan.get("next_product")
+    if plan.get("materials_short") and nxt and st.day <= r.last_po_day:
+        add("materials", "act", f"Materials short for the next batch of {nxt['code']}: {', '.join(plan['materials_short'])}. "
+            "Run MD01, then ME59N.", "order materials (MD01 → ME59N)")
+    if plan.get("checkpoint_day"):
+        add("forecast", "do", "Forecast day: type the MD61 numbers from the Make tab (whole 48,000 batches).", "MD61 forecast day")
+    if nxt and not plan.get("production_brake") and plan["action"].startswith(("CO41", "Start-up")):
+        add("make", "do", plan["action"], f"CO41 {nxt['code']}")
+    moves = [p for p in prices if p.get("move") and p.get("new_prices") and not p.get("cut_every_day")]
+    if moves:
+        add("prices", "do", "Price changes in VK32: " + "; ".join(
+            f"{p['code']} {'+' if p['move'] > 0 else '−'}€{abs(p['move']):.2f} → {_channel_prices(p['new_prices'])}" for p in moves),
+            "VK32: " + ", ".join(f"{p['code']} €{p['new_prices'].get('12', 0):.2f}" for p in moves[:3]))
+    for day, what in ((r.last_forecast_day, "MD61 forecasts"), (r.last_po_day, "purchase orders (ME59N)"),
+                      (r.last_convert_day, "conversions (CO41)")):
+        if st.day == day:
+            add(f"cutoff:{day}", "do", f"Last day for {what}.", f"last day for {what.split(' (')[0]}")
+    a = snap["alerts"]
+    if snap["finished_goods_gauge"] in ("TOO HIGH", "TOO MUCH FOR DAYS LEFT") and not plan.get("production_brake"):
+        add("stock_high", "watch", f"Finished goods {snap['finished_goods']:,} boxes: {snap['finished_goods_gauge'].lower()}. "
+            "Cut prices before making more.", "stock too high")
+    if a.get("small_batches_queued"):
+        add("small_batches", "watch", f"{a['small_batches_queued']} production order(s) under 48,000 are queued: extra setups.",
+            "small batches queued")
+    if a.get("batches_after_last_conversion_day"):
+        add("late_batches", "watch", f"{a['batches_after_last_conversion_day']} order(s) start after the last conversion day.",
+            "late batches")
+    if plan.get("warning"):
+        add("too_many_products", "watch", plan["warning"], "too many products")
+    out.sort(key=lambda x: LEVELS[x["level"]])
+    return out
+
+
+def brief_line(alerts: list[dict], day: int, most: int = 3) -> str:
+    """The rules-based one-line brief (no AI needed)."""
+    items = [a["short"] for a in alerts if a["level"] != "watch"][:most] or [a["short"] for a in alerts][:1]
+    return f"Day {day}: " + ("; ".join(items) if items else "nothing urgent, hold steady") + "."
+
+
+def brief_facts(st: GameState, snap: dict, alerts: list[dict]) -> dict:
+    """What the AI brief gets to see: headline numbers and today's to-do list."""
+    return _py({"day": st.day, "round": st.round, "day_in_round": st.day_in_round, "phase": snap["phase"],
+                "valuation_eur": snap["valuation"], "profit_eur": snap["profit"], "finished_goods": snap["finished_goods"],
+                "stock_gauge": snap["finished_goods_gauge"], "factory_use_3d": snap["factory_use_3d"],
+                "to_do": [f"[{a['level']}] {a['text']}" for a in alerts]})
+
+
+def today(st: GameState) -> dict:
+    alerts = daily_alerts(st)
+    return _py({"day": st.day, "brief": brief_line(alerts, st.day), "alerts": alerts})
+
+
 TOOLS = {
+    "todays_alerts": (today, "Today's to-do list, most urgent first: undercuts, production brake, stock-outs, materials, forecast day, price moves."),
     "get_snapshot": (snapshot, "Today's headline numbers: day, valuation, profit, rating, cash, finished-goods gauge, alerts."),
     "plan_production": (production_plan, "What to convert next (CO41), the whole-batch MD61 number per product, materials status."),
     "price_advice": (price_advice, "Stock-aware price moves per product with the exact new prices per channel; learned price sensitivity."),

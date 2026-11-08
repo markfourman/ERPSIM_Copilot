@@ -16,14 +16,16 @@ It **advises only**: it never logs into SAP or changes anything. Your team types
 
 | Part | What you get |
 |---|---|
-| **Live numbers** | Valuation, profit, rating, market share, sold vs made per day, factory use, storage cost, refreshed every 15–120 s. |
+| **Live mode** | Checks for a new game day every 5 s with one tiny request, then downloads **only that day's rows**. A live bar shows how fresh the data is ("day 23 · new data 4 s ago"). |
+| **Today panel** | Each new day: a to-do list, most urgent first (undercut, production brake, stock-out within 2 days, materials short, forecast day, price moves), a one-line brief, pop-ups and a sound for anything urgent. |
+| **Live numbers** | Valuation, profit, rating, market share, sold vs made per day, factory use, storage cost. |
 | **Finished-goods gauge** | Total boxes against a healthy band (80k–140k). Switches to "will it sell out by day 80?" in the last days. |
 | **Make tab** | Next product to convert (CO41), the MD61 forecast number that gives whole 48,000 batches, materials check, **production brake** when stock piles up. |
 | **Prices tab** | Stock-aware price moves sized against rivals, with the new price for each channel (10 / 12 / 14). **Undercut alarm** when rivals are €1+ cheaper. |
 | **Money tab** | Buying capacity vs paying down the loan, in profit and score terms. |
 | **Marketing tab** | Which regions moved week to week, and how to test marketing properly. |
 | **Ask tab** | Chat with an AI (Google Gemini, free tier) that reads all of the above plus **your team's own memory**. |
-| **Replay** | Load a saved game and step through it day by day to practise or review. |
+| **Practice and replay** | **Practice live** plays a saved game in real time (45-second days, or faster) so the team can learn the alerts. **Saved game** jumps to any day to review. |
 
 ---
 
@@ -52,7 +54,8 @@ Each step says what it does, so you're not running commands blindly.
 installer (64-bit). On the first screen **tick "Add python.exe to PATH"**, then Install.
 *Installs Python; PATH lets you type `python` in any terminal.*
 
-**2. Download this project.** On this page: green **Code** button → **Download ZIP**. Unzip it to `C:\erpsim-copilot`.
+**2. Download this project.** On this page: green **Code** button → **Download ZIP**. Unzip it, then move the folder
+inside (`ERPSIM_Copilot-main`) to `C:\` and rename it `erpsim-copilot`, so that `C:\erpsim-copilot\app.py` exists.
 
 **3. Open a terminal in that folder.** Open the folder in File Explorer, click the address bar, type `cmd`, press Enter.
 *A terminal is a window where you type commands. Opening it this way makes it work in this folder.*
@@ -99,7 +102,8 @@ python -m copilot.cli --replay history\YOUR_GAME.xlsx --day 30 --dry-run
 streamlit run app.py
 ```
 *Opens a web page at `http://localhost:8501`. "localhost" means your own laptop; nothing is online.*
-Stop it with **Ctrl + C** in the terminal.
+Stop it with **Ctrl + C** in the terminal. In the sidebar, pick **Live OData feed** during a game, or
+**Practice live** with a saved game to try the alerts first. Click the page once so your browser allows the alert sound.
 
 **Every time after that:** open the folder → `cmd` in the address bar → `.venv\Scripts\activate` → `streamlit run app.py`.
 
@@ -147,6 +151,29 @@ Good to know:
 
 ---
 
+## Live mode: how it stays fresh
+
+OData is **fetch**, not push (like fetch vs push email): the server never calls you, so the co-pilot has to ask.
+Instead of downloading the whole game every few seconds, it asks small and often:
+
+1. **Heartbeat:** every 5 s, one row: "what's the latest game day?"
+   (`Company_Valuation?$top=1&$orderby=SIM_ROUND desc,SIM_STEP desc`).
+2. **New day:** only that day's rows for the daily tables (`Sales?$filter=SIM_ROUND eq '04' and SIM_STEP eq '20'`),
+   plus a fresh copy of the small tables whose rows change (prices, production and purchase orders, forecasts).
+   The weekly market table is read only when a new week's numbers are due.
+3. **Push to people:** when a rule fires, the page updates, pops up the urgent items and plays a sound.
+   With an AI key, it also writes a one-line brief for the day (one AI call per day fits the free tier).
+
+The whole game downloads once, when you connect. Late in a game a new day costs about 10–15 small requests
+(roughly 50–120 KB) instead of the whole game (1–2 MB), so the app updates within seconds and stays easy on the game
+server that every team shares. The live bar shows these numbers. Nothing can be fresher than the game itself: a new
+day's data appears once per game day (about 45 seconds in a tournament).
+
+Terminal version: `python -m copilot.cli --watch` prints the to-do list as each day arrives
+(`--replay my_game.xlsx --watch --day 20 --seconds-per-day 10` to practise).
+
+---
+
 ## Known issues and fixes
 
 | You see | Why | Fix |
@@ -158,6 +185,8 @@ Good to know:
 | "The free AI limit for this minute is used up" | Gemini free tier: a few requests per minute | Wait a minute; ask during breaks |
 | AI error mentioning the model "not found" | Google renamed its models | Pick a free Flash/Flash-Lite model in AI Studio; set `COPILOT_MODEL=` in `.env` |
 | Prices tab says "Costs from: config.yaml" | Feed has no supplier-price table | Put your cost per box in `config.yaml` |
+| No sound on urgent alerts | Browsers block sound until you interact with the page | Click anywhere on the page once; check "Sound on urgent alerts" in the sidebar |
+| Live bar turns red: "Can't reach the game server" | Wi-Fi dropped or the server is busy | It keeps the last data and retries by itself; check the OData URL and login if it stays red |
 
 More detail: **[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)**.
 
@@ -174,6 +203,9 @@ More detail: **[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)**.
 - **Production brake:** over 250,000 boxes with every product above 10 days of stock → pause the line.
 - **Costs:** your recipe × the game's own supplier prices when the feed has them.
 - **Warnings:** more than 5 products, DC10 above DC12, prices below the floor, game over on day 80.
+- **Today panel:** "act" items (sound + pop-up) are undercuts, the production brake, a product running out within
+  2 days with nothing queued, materials short and an idle factory; "do" items are forecast days, the next conversion,
+  price moves and round-4 cut-off days; "watch" items are high stock, small or late batches and too many products.
 
 All thresholds live in `copilot/config.py` (`Rules`) and can be changed in `config.yaml`.
 
@@ -190,6 +222,7 @@ All thresholds live in `copilot/config.py` (`Rules`) and can be changed in `conf
 ```
 app.py                web app (Streamlit)
 copilot/odata.py      live feed + saved workbooks
+copilot/live.py       live mode: heartbeat, new-day-only downloads, practice playback
 copilot/model.py      today's numbers per product and material
 copilot/engine.py     the decision rules (the tabs and the AI's tools)
 copilot/elasticity.py how sales react to price, learned from your game

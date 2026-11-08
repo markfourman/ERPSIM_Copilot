@@ -152,3 +152,38 @@ class Copilot:
                     results.append({"type": "tool_result", "tool_use_id": block.id, "content": json.dumps(data)[:20000]})
             messages.append({"role": "user", "content": results})
         return "I needed too many steps. Ask a narrower question.", calls
+
+
+# ---------------------------------------------------------------------- daily brief (live mode)
+BRIEF = """You write the one-line daily brief for a team playing the SAP ERPsim Manufacturing (muesli) game.
+A game day lasts about 45 seconds, so it must be readable at a glance.
+- One line, at most 35 words, starting with "Day N:".
+- Most urgent first. Use the exact product codes, transactions and prices from the to-do list. Never invent numbers.
+- If nothing is urgent, say what to hold or watch.
+- No greeting, no explanation, no markdown."""
+
+
+def daily_brief(settings, facts: dict) -> tuple[str | None, str]:
+    """One AI call per game day (fits the free tier). Returns (line, "") or (None, reason)."""
+    prompt = f"Facts:\n{json.dumps(_jsonable(facts))}\n\nWrite the brief for day {facts.get('day')}."
+    try:
+        if settings.provider == "claude":
+            from anthropic import Anthropic
+
+            resp = Anthropic().messages.create(model=settings.chat_model(), max_tokens=200, system=BRIEF,
+                                               messages=[{"role": "user", "content": prompt}])
+            text = "".join(b.text for b in resp.content if b.type == "text")
+        else:
+            from google import genai
+            from google.genai import types
+
+            resp = genai.Client().models.generate_content(model=settings.chat_model(), contents=prompt,
+                                                          config=types.GenerateContentConfig(system_instruction=BRIEF))
+            text = getattr(resp, "text", None) or ""
+    except Exception as e:
+        msg = str(e)
+        if "429" in msg or "RESOURCE_EXHAUSTED" in msg or "rate limit" in msg.lower():
+            return None, "free AI limit reached for this minute"
+        return None, f"AI error: {msg[:160]}"
+    text = " ".join(text.split()).strip("*` ")
+    return (text[:400], "") if text else (None, "the AI returned nothing")
